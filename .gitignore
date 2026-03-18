@@ -1,0 +1,36 @@
+# Secrets
+.env
+
+# Generated config (contains personal data)
+config.json
+config.yaml
+
+# Daily logs (personal data)
+logs/
+
+# Generated markdown files (contain personal goals) — root only, not templates/
+/GOALS.md
+/CURRENT_TASKS.md
+/WEEKLY_SCHEDULE.md
+/CLAUDE.md
+
+# Generated MCP config
+.mcp.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Bot state
+.bot_offset
+.bot_listener.pid
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

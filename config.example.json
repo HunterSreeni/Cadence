@@ -1,0 +1,78 @@
+{
+  "version": 1,
+
+  "user": {
+    "name": "Your Name",
+    "timezone": "Asia/Kolkata"
+  },
+
+  "mode": "personal",
+
+  "telegram": {
+    "chat_id": null
+  },
+
+  "paths": {
+    "base_dir": ".",
+    "logs_dir": "./logs"
+  },
+
+  "schedule": {
+    "morning_time": "09:00",
+    "evening_time": "21:45",
+    "weekly_review_day": "sunday",
+    "weekly_review_time": "19:00",
+
+    "day_types": {
+      "0": { "type": "rest",   "label": "REST",       "focus": "Light day — content + monitoring" },
+      "1": { "type": "deep",   "label": "DEEP WORK",  "focus": "Deep work session" },
+      "2": { "type": "review", "label": "REVIEW",     "focus": "Review progress + catch up" },
+      "3": { "type": "deep",   "label": "DEEP WORK",  "focus": "Deep work session" },
+      "4": { "type": "prep",   "label": "PREP",       "focus": "Weekly review + plan weekend" },
+      "5": { "type": "power",  "label": "POWER DAY",  "focus": "Full focus day (6-8 hrs)" },
+      "6": { "type": "power",  "label": "POWER DAY",  "focus": "Full focus day + weekly planning" }
+    },
+
+    "day_emojis": {
+      "rest": "\ud83d\ude34",
+      "deep": "\ud83c\udfaf",
+      "review": "\ud83d\udd0d",
+      "prep": "\ud83d\udd27",
+      "power": "\ud83d\udcaa"
+    }
+  },
+
+  "goals": {
+    "primary": "Ship the project by Q2",
+    "income_target": null,
+    "income_currency": "$",
+    "debt_total": null,
+    "custom_metrics": []
+  },
+
+  "tracking": {
+    "categories": [
+      { "keyword": "spent",   "pattern": "(?:spent\\s+)?(\\d+)\\s+(\\w[\\w\\s]*?)(?:,|$|\\n)", "emoji": "\ud83d\udcb8", "label": "Spending" },
+      { "keyword": "earned",  "pattern": "earned?\\s+\\$?\u20b9?(\\d+)\\s*(?:usd|inr|dollars?)?\\s*(\\w+)?",       "emoji": "\ud83d\udcb0", "label": "Income" },
+      { "keyword": "done",    "pattern": "done\\s+(.+?)(?:,|$|\\n)",                                                "emoji": "\u2705",       "label": "Completed" },
+      { "keyword": "worked",  "pattern": null,                                                                       "emoji": "\ud83d\udcdd", "label": "Work" },
+      { "keyword": "blocker", "pattern": null,                                                                       "emoji": "\ud83d\udea7", "label": "Blocker" }
+    ],
+    "work_keywords": ["worked on", "submitted", "applied to", "posted", "published", "wrote"],
+    "custom_fields": []
+  },
+
+  "claude": {
+    "enabled": false,
+    "mcp_datetime": true
+  },
+
+  "messages": {
+    "morning_greeting": "MORNING BRIEFING",
+    "evening_greeting": "END OF DAY",
+    "weekly_greeting": "WEEKLY REVIEW",
+    "daily_reminder": null,
+    "income_label": "Target",
+    "debt_label": "Debt"
+  }
+}
