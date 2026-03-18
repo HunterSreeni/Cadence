@@ -301,14 +301,38 @@ your-project/
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) if it exists, or just open an issue/PR.
+We welcome contributions from everyone! Whether it's a bug fix, new feature, documentation improvement, or just a suggestion — every contribution matters.
+
+**Ways to contribute:**
+
+- **Bug reports** — found something broken? [Open an issue](../../issues/new?template=bug_report.md)
+- **Feature requests** — have an idea? [Start a discussion](../../issues/new?template=feature_request.md)
+- **Code contributions** — fork, branch, code, PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- **Documentation** — typos, better examples, translations — all welcome
+- **Share your setup** — using cadence? Show us your config in [Discussions](../../discussions)
+
+Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting.
+
+---
+
+## Roadmap
+
+- [ ] Quarterly and yearly review prompts
+- [ ] Multi-user support (team mode with shared goals)
+- [ ] Telegram inline keyboard for quick replies
+- [ ] Dashboard web UI (optional)
+- [ ] Plugin system for custom message builders
+- [ ] Notion/Obsidian sync
+- [ ] i18n (multi-language messages)
+
+Have an idea? [Open a feature request](../../issues/new?template=feature_request.md).
 
 ---
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — use it, fork it, build on it.
 
 ---
 
-Built with discipline, Telegram, and optionally [Claude Code](https://claude.ai/claude-code).
+Built with discipline, prompt engineered with [Claude Code](https://claude.ai/claude-code) and Telegram.
