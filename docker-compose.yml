@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  cadence:
+    build: .
+    restart: always
+    volumes:
+      # Persist data between container restarts
+      - ./logs:/app/logs
+      - ./config.json:/app/config.json
+      - ./.env:/app/.env
+      - ./GOALS.md:/app/GOALS.md
+      - ./CURRENT_TASKS.md:/app/CURRENT_TASKS.md
+      - ./WEEKLY_SCHEDULE.md:/app/WEEKLY_SCHEDULE.md
+      # Optional files (comment out if not used)
+      # - ./FINANCES.md:/app/FINANCES.md
+      # - ./HABITS.md:/app/HABITS.md
+      - ./balances.json:/app/balances.json
+      - ./commands:/app/commands
+    environment:
+      - TZ=Asia/Kolkata

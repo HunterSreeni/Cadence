@@ -1,0 +1,25 @@
+# Cadence Telegram Bot — systemd service
+# Install: bash schedulers/install_systemd.sh
+# Or manually:
+#   1. Copy this file to /etc/systemd/system/cadence.service
+#   2. Edit WorkingDirectory and ExecStart paths
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now cadence
+
+[Unit]
+Description=Cadence Telegram Bot Listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/cadence
+ExecStart=/usr/bin/python3 cadence.py listen
+Restart=always
+RestartSec=10
+EnvironmentFile=/path/to/cadence/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

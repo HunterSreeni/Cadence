@@ -23,7 +23,8 @@ import sys
 import time
 import urllib.request
 import urllib.parse
-from datetime import datetime, date
+import importlib.util
+from datetime import datetime, date, timedelta
 from pathlib import Path
 
 # ============================================================
@@ -273,6 +274,11 @@ def build_morning_message():
         msg += f"Hi {user_name}!\n"
     msg += f"\n{day_emoji} <b>Day Type: {day_type}</b>\n{day_focus}\n"
 
+    # Account balances (if configured)
+    bal_summary = get_balance_summary(cfg)
+    if bal_summary:
+        msg += "\n\U0001f4b0 <b>Balances</b>\n" + bal_summary + "\n"
+
     # Custom metrics
     if metrics:
         msg += "\n\U0001f4ca <b>Metrics</b>\n"
@@ -296,6 +302,11 @@ def build_morning_message():
             clean = re.sub(r'\*\*', '', task)
             clean = re.sub(r'`[^`]*`', '', clean)[:80]
             msg += f"\n\u2022 {clean}"
+
+    # Habits (if enabled)
+    habits_summary = get_habits_summary(cfg)
+    if habits_summary:
+        msg += "\n\n\U0001f3af <b>Habits</b>\n" + habits_summary
 
     # Daily reminder
     reminder = msgs.get("daily_reminder")
@@ -404,6 +415,10 @@ def build_status_message():
         msg += f"User: {user_name}\n"
     msg += f"\U0001f4c5 Today: {day_type} \u2014 {day_focus}\n"
 
+    bal_summary = get_balance_summary(cfg)
+    if bal_summary:
+        msg += "\n\U0001f4b0 <b>Balances</b>\n" + bal_summary + "\n"
+
     if metrics:
         for label, value in metrics.items():
             msg += f"\n\u2022 {label.replace('_', ' ').title()}: {value}"
@@ -450,12 +465,15 @@ def _parse_log_sections(log_text):
 # REPLY HANDLER
 # ============================================================
 def handle_reply(text):
-    """Parse user reply and update relevant files."""
+    """Parse user reply and update relevant files.
+
+    Multi-line messages are split and each line processed independently
+    to avoid cross-contamination (e.g., spending line triggering work match).
+    """
     cfg = load_config()
     text_lower = text.lower().strip()
     today_str = date.today().strftime("%Y-%m-%d")
     log_file = get_logs_dir() / f"{today_str}.md"
-    responses = []
 
     # Skip command
     if text_lower in ("skip", "busy", "nothing"):
@@ -466,93 +484,402 @@ def handle_reply(text):
     if text_lower in ("status", "/status"):
         return build_status_message()
 
-    # Process tracking categories from config
-    categories = cfg.get("tracking", {}).get("categories", [])
+    # Split multi-line messages into individual lines
+    lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
 
+    # Further split lines with multiple spending entries joined by "and"
+    expanded = []
+    for line in lines:
+        parts = re.split(r'\s+(?:and|&|,)\s+(?=spent\s)', line, flags=re.IGNORECASE)
+        expanded.extend(p.strip() for p in parts if p.strip())
+
+    # Process each fragment independently
+    all_responses = []
+    for line in expanded:
+        line_responses = _handle_single_line(cfg, line, log_file)
+        all_responses.extend(line_responses)
+
+    if not all_responses:
+        append_to_log(log_file, f"Note: {text.strip()}")
+        all_responses.append("\U0001f4dd Noted in today's log")
+
+    return "\n".join(all_responses)
+
+
+def _handle_single_line(cfg, line, log_file):
+    """Process a single line of user input. Returns list of response strings."""
+    line_lower = line.lower().strip()
+    responses = []
+
+    # --- Bank-aware spending ---
+    # Supports: "spent 295 from BOB on groceries", "spent 200 groceries from IDFC",
+    #           "spent 300 from BOB", "spent 500 food", "Spent - 295 from BOB on groceries"
+    amount = None
+    account = None
+    category = None
+
+    # Get configured account names for matching
+    accounts_cfg = cfg.get("accounts", {})
+    account_names = "|".join(re.escape(k.lower()) for k in accounts_cfg) if accounts_cfg else ""
+
+    if account_names:
+        # Pattern 1: "spent 295 from BOB on/for groceries"
+        m = re.match(
+            rf'(?:spent\s*[-\u2013]?\s*)(\d+)\s+from\s+({account_names})\s+(?:on|for)\s+(\w[\w\s]*?)$',
+            line_lower)
+        if m:
+            amount, account, category = int(m.group(1)), m.group(2), m.group(3).strip()
+
+        # Pattern 2: "spent 200 groceries from IDFC"
+        if amount is None:
+            m = re.match(
+                rf'(?:spent\s*[-\u2013]?\s*)(\d+)\s+(\w[\w\s]*?)\s+from\s+({account_names})\s*$',
+                line_lower)
+            if m:
+                amount, category, account = int(m.group(1)), m.group(2).strip(), m.group(3)
+
+        # Pattern 3: "spent 295 from BOB" (no category)
+        if amount is None:
+            m = re.match(
+                rf'(?:spent\s*[-\u2013]?\s*)(\d+)\s+from\s+({account_names})\s*$',
+                line_lower)
+            if m:
+                amount, account, category = int(m.group(1)), m.group(2), "unspecified"
+
+    # Pattern 4: "spent 500 food" (no account — always available)
+    if amount is None:
+        m = re.match(r'(?:spent\s*[-\u2013]?\s*)(\d+)\s+(\w[\w\s]*?)$', line_lower)
+        if m:
+            amount, category = int(m.group(1)), m.group(2).strip()
+
+    if amount is not None:
+        log_entry = f"Spending: {amount} on {category}"
+        if account:
+            log_entry += f" (from {account.upper()})"
+        append_to_log(log_file, log_entry)
+
+        response = f"\U0001f4b8 Recorded: {amount} {category}"
+
+        # Auto-deduct from account balance if specified
+        if account and accounts_cfg:
+            new_bal = _deduct_balance(cfg, account, amount)
+            if new_bal is not None:
+                response += f"\n\U0001f3e6 {account.upper()} balance \u2192 {new_bal:,.0f}"
+
+        responses.append(response)
+        return responses  # Don't process spending lines as work
+
+    # --- Earnings ---
+    earn_match = re.match(
+        r'earned?\s+\$?\u20b9?(\d+)\s*(?:usd|inr|dollars?)?\s*(\w+)?',
+        line_lower)
+    if earn_match:
+        amt = earn_match.group(1)
+        source = earn_match.group(2).strip() if earn_match.group(2) else "unknown"
+        append_to_log(log_file, f"INCOME: {amt} from {source}")
+        responses.append(f"\U0001f4b0 INCOME RECORDED: {amt} from {source}!")
+        return responses
+
+    # --- Task completion ---
+    done_match = re.match(r'done\s+(.+?)$', line_lower)
+    if done_match:
+        item = done_match.group(1).strip()
+        marked = mark_task_done(item)
+        if marked:
+            responses.append(f"\u2705 Marked done: {marked}")
+        else:
+            responses.append(f"\U0001f4dd Noted: {item} done")
+            append_to_log(log_file, f"Completed: {item}")
+        return responses
+
+    # --- Balance update: "bob 1430 idfc 2101" ---
+    if accounts_cfg and len(accounts_cfg) >= 2:
+        acct_keys = list(accounts_cfg.keys())
+        bal_pattern = rf'{re.escape(acct_keys[0].lower())}\s+(\d+[\d,.]*)\s*(?:{re.escape(acct_keys[1].lower())}|,)\s*(\d+[\d,.]*)'
+        bal_match = re.search(bal_pattern, line_lower)
+        if bal_match:
+            _set_balance(cfg, acct_keys[0], bal_match.group(1))
+            _set_balance(cfg, acct_keys[1], bal_match.group(2))
+            balances = _load_balances(cfg)
+            parts = [f"{k}: {v:,.0f}" for k, v in balances.items()]
+            total = sum(balances.values())
+            responses.append(f"\U0001f3e6 Balances updated! {' | '.join(parts)} | Total: {total:,.0f}")
+            append_to_log(log_file, f"Balance update: {', '.join(parts)}")
+            return responses
+
+    # --- Keyword-only categories (work, blocker, tested, etc.) ---
+    categories = cfg.get("tracking", {}).get("categories", [])
     for cat in categories:
         keyword = cat.get("keyword", "")
         pattern = cat.get("pattern")
         emoji = cat.get("emoji", "\U0001f4dd")
         label = cat.get("label", keyword.title())
 
-        if not keyword:
-            continue
+        if not keyword or pattern:
+            continue  # skip pattern-based categories (handled above)
 
-        # Categories with regex patterns (spending, earnings, done)
-        if pattern and keyword in text_lower:
-            try:
-                matches = re.findall(pattern, text_lower)
-            except re.error:
-                continue  # skip broken pattern
-            if matches:
-                if keyword == "spent":
-                    total = 0
-                    items = []
-                    for match in matches:
-                        if isinstance(match, tuple) and len(match) >= 2:
-                            amt, desc = int(match[0]), match[1].strip()
-                            total += amt
-                            items.append(f"{amt} {desc}")
-                    if items:
-                        entry = f"Spending: {', '.join(items)} (total: {total})"
-                        append_to_log(log_file, entry)
-                        responses.append(f"{emoji} Recorded: {', '.join(items)} = {total}")
+        if keyword == "worked":
+            work_keywords = cfg.get("tracking", {}).get("work_keywords", [])
+            if any(wk in line_lower for wk in work_keywords):
+                append_to_log(log_file, f"Work: {line.strip()}")
+                responses.append(f"{emoji} Work logged: {line.strip()[:60]}")
+                return responses
 
-                elif keyword == "earned":
-                    for match in matches:
-                        if isinstance(match, tuple):
-                            amt = match[0]
-                            source = match[1].strip() if len(match) > 1 and match[1] else "unknown"
-                        else:
-                            amt, source = match, "unknown"
-                        append_to_log(log_file, f"INCOME: {amt} from {source}")
-                        responses.append(f"{emoji} INCOME RECORDED: {amt} from {source}!")
+        elif keyword == "blocker":
+            if keyword in line_lower or "blocked" in line_lower or "stuck" in line_lower:
+                append_to_log(log_file, f"BLOCKER: {line.strip()}")
+                responses.append(f"{emoji} Blocker noted")
+                return responses
 
-                elif keyword == "done":
-                    for match in matches:
-                        item = match.strip() if isinstance(match, str) else match[0].strip()
-                        marked = mark_task_done(item)
-                        if marked:
-                            responses.append(f"{emoji} Marked done: {marked}")
-                        else:
-                            responses.append(f"\U0001f4dd Noted: {item} done")
-                            append_to_log(log_file, f"Completed: {item}")
+        elif keyword in line_lower:
+            append_to_log(log_file, f"{label}: {line.strip()}")
+            responses.append(f"{emoji} {label} logged")
+            return responses
 
-        # Categories without patterns — keyword matching (work, blocker)
-        elif not pattern:
-            if keyword == "worked":
-                work_keywords = cfg.get("tracking", {}).get("work_keywords", [])
-                if any(wk in text_lower for wk in work_keywords):
-                    append_to_log(log_file, f"Work: {text.strip()}")
-                    if "work" not in " ".join(responses).lower():
-                        responses.append(f"{emoji} Work logged")
+    # --- Habits module ---
+    habit_resp = _handle_habit_line(cfg, line, log_file)
+    if habit_resp:
+        return habit_resp
 
-            elif keyword == "blocker":
-                if keyword in text_lower or "blocked" in text_lower or "stuck" in text_lower:
-                    append_to_log(log_file, f"BLOCKER: {text.strip()}")
-                    responses.append(f"{emoji} Blocker noted")
+    # --- Health module ---
+    health_resp = _handle_health_line(cfg, line, log_file)
+    if health_resp:
+        return health_resp
 
-    # Process custom fields
+    # --- Custom fields ---
     for field in cfg.get("tracking", {}).get("custom_fields", []):
         pattern = field.get("pattern")
         name = field.get("name", "field")
         label = field.get("label", name)
         if pattern:
             try:
-                match = re.search(pattern, text_lower)
+                match = re.search(pattern, line_lower)
             except re.error:
                 continue
             if match:
                 value = match.group(1) if match.groups() else match.group(0)
                 append_to_log(log_file, f"{label}: {value}")
                 responses.append(f"\U0001f4dd {label} updated: {value}")
+                return responses
 
-    # If nothing matched, log as general note
-    if not responses:
-        append_to_log(log_file, f"Note: {text.strip()}")
-        responses.append("\U0001f4dd Noted in today's log")
+    return responses
 
-    return "\n".join(responses)
+
+# ============================================================
+# BALANCE TRACKING
+# ============================================================
+def _load_balances(cfg):
+    """Load balances from balances.json, seeding from config if needed."""
+    base_dir = cfg.get("_base_path", Path(__file__).parent.resolve())
+    bal_file = base_dir / "balances.json"
+    accounts_cfg = cfg.get("accounts", {})
+
+    if bal_file.exists():
+        try:
+            return json.loads(bal_file.read_text())
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Seed from config
+    balances = {}
+    for name, info in accounts_cfg.items():
+        if isinstance(info, dict):
+            balances[name.upper()] = info.get("initial_balance", 0)
+        else:
+            balances[name.upper()] = float(info)
+    if balances:
+        _save_balances(cfg, balances)
+    return balances
+
+
+def _save_balances(cfg, balances):
+    """Write balances to balances.json."""
+    base_dir = cfg.get("_base_path", Path(__file__).parent.resolve())
+    bal_file = base_dir / "balances.json"
+    bal_file.write_text(json.dumps(balances, indent=2) + "\n")
+
+
+def _deduct_balance(cfg, account_name, amount):
+    """Deduct amount from an account. Returns new balance or None."""
+    balances = _load_balances(cfg)
+    key = account_name.upper()
+    if key not in balances:
+        # Try case-insensitive match
+        for k in balances:
+            if k.lower() == account_name.lower():
+                key = k
+                break
+        else:
+            return None
+    balances[key] = balances.get(key, 0) - amount
+    _save_balances(cfg, balances)
+    return balances[key]
+
+
+def _set_balance(cfg, account_name, amount_str):
+    """Set an account balance explicitly."""
+    balances = _load_balances(cfg)
+    key = account_name.upper()
+    try:
+        balances[key] = float(amount_str.replace(",", ""))
+    except (ValueError, TypeError):
+        return
+    _save_balances(cfg, balances)
+
+
+def get_balance_summary(cfg=None):
+    """Get a formatted balance summary for messages."""
+    if cfg is None:
+        cfg = load_config()
+    accounts_cfg = cfg.get("accounts", {})
+    if not accounts_cfg:
+        return ""
+    balances = _load_balances(cfg)
+    if not balances:
+        return ""
+    parts = []
+    total = 0
+    for name, bal in balances.items():
+        parts.append(f"\u2022 {name}: {bal:,.0f}")
+        total += bal
+    parts.append(f"\u2022 Total: {total:,.0f}")
+    return "\n".join(parts)
+
+
+# ============================================================
+# HABITS MODULE
+# ============================================================
+def _load_habits(cfg):
+    """Load habit streak data from habits.json."""
+    base_dir = cfg.get("_base_path", Path(__file__).parent.resolve())
+    hab_file = base_dir / "habits.json"
+    if hab_file.exists():
+        try:
+            return json.loads(hab_file.read_text())
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {}
+
+
+def _save_habits(cfg, data):
+    """Write habit data to habits.json."""
+    base_dir = cfg.get("_base_path", Path(__file__).parent.resolve())
+    hab_file = base_dir / "habits.json"
+    hab_file.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _record_habit(cfg, habit_name):
+    """Record a habit completion for today. Returns (streak, is_new_best)."""
+    data = _load_habits(cfg)
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    if habit_name not in data:
+        data[habit_name] = {"streak": 0, "best": 0, "last_date": ""}
+
+    h = data[habit_name]
+    if h["last_date"] == today:
+        return h["streak"], False  # Already recorded today
+
+    if h["last_date"] == yesterday:
+        h["streak"] += 1
+    else:
+        h["streak"] = 1
+
+    h["last_date"] = today
+    is_new_best = h["streak"] > h["best"]
+    if is_new_best:
+        h["best"] = h["streak"]
+
+    _save_habits(cfg, data)
+    return h["streak"], is_new_best
+
+
+def get_habits_summary(cfg=None):
+    """Get a formatted habits summary for messages."""
+    if cfg is None:
+        cfg = load_config()
+    modules = cfg.get("modules", {})
+    habits_mod = modules.get("habits", {})
+    if not habits_mod.get("enabled"):
+        return ""
+    habit_list = habits_mod.get("habits", [])
+    if not habit_list:
+        return ""
+    data = _load_habits(cfg)
+    today = date.today().isoformat()
+    parts = []
+    for h in habit_list:
+        info = data.get(h, {"streak": 0, "best": 0, "last_date": ""})
+        done = "\u2705" if info.get("last_date") == today else "\u2b1c"
+        streak = info.get("streak", 0)
+        best = info.get("best", 0)
+        parts.append(f"{done} {h} (streak: {streak}, best: {best})")
+    return "\n".join(parts)
+
+
+def _handle_habit_line(cfg, line, log_file):
+    """Handle habit tracking. Returns response list or empty."""
+    modules = cfg.get("modules", {})
+    habits_mod = modules.get("habits", {})
+    if not habits_mod.get("enabled"):
+        return []
+    habit_list = [h.lower() for h in habits_mod.get("habits", [])]
+    original_list = habits_mod.get("habits", [])
+    line_lower = line.lower().strip()
+
+    # Match "did exercise" or "exercise done" or just "exercise"
+    for i, h in enumerate(habit_list):
+        if h in line_lower:
+            streak, is_best = _record_habit(cfg, original_list[i])
+            append_to_log(log_file, f"Habit: {original_list[i]} (streak: {streak})")
+            resp = f"\u2705 {original_list[i]} logged! Streak: {streak}"
+            if is_best:
+                resp += " \U0001f525 New best!"
+            return [resp]
+    return []
+
+
+def _handle_health_line(cfg, line, log_file):
+    """Handle health tracking. Returns response list or empty."""
+    modules = cfg.get("modules", {})
+    health_mod = modules.get("health", {})
+    if not health_mod.get("enabled"):
+        return []
+    fields = health_mod.get("fields", [])
+    line_lower = line.lower().strip()
+    responses = []
+
+    for field in fields:
+        m = re.search(rf'{re.escape(field.lower())}\s+(\d+[\d.]*)', line_lower)
+        if m:
+            value = m.group(1)
+            append_to_log(log_file, f"Health: {field} = {value}")
+            responses.append(f"\U0001f3cb {field}: {value}")
+    return responses
+
+
+# ============================================================
+# PLUGIN SYSTEM
+# ============================================================
+def _load_plugins():
+    """Load command plugins from commands/ directory."""
+    commands_dir = Path(__file__).parent.resolve() / "commands"
+    if not commands_dir.exists():
+        return {}
+    plugins = {}
+    for f in commands_dir.glob("*.py"):
+        if f.name.startswith("_"):
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f.stem, f)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "register"):
+                plugins.update(mod.register())
+        except Exception as e:
+            print(f"[cadence] Plugin {f.name} failed to load: {e}")
+    return plugins
 
 
 # ============================================================
@@ -611,6 +938,18 @@ def mark_task_done(item):
 
 
 # ============================================================
+# HELPERS
+# ============================================================
+def _is_pid_running(pid):
+    """Check if a process is running (cross-platform)."""
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, OverflowError):
+        return False
+
+
+# ============================================================
 # LISTENER
 # ============================================================
 def listen():
@@ -621,12 +960,15 @@ def listen():
 
     if pid_file.exists():
         old_pid = pid_file.read_text().strip()
-        if os.path.exists(f"/proc/{old_pid}"):
+        if _is_pid_running(old_pid):
             print(f"Listener already running (PID {old_pid}). Exiting.")
             sys.exit(0)
     pid_file.write_text(str(os.getpid()))
 
     chat_id = get_chat_id()
+    plugins = _load_plugins()
+    if plugins:
+        print(f"[{datetime.now()}] Loaded plugins: {', '.join(plugins.keys())}")
     print(f"[{datetime.now()}] cadence listener started (PID {os.getpid()}). "
           f"Waiting for messages...")
 
@@ -673,10 +1015,21 @@ def listen():
                             send_message(build_evening_message())
                         elif cmd == "/weekly":
                             send_message(build_weekly_message())
+                        elif cmd in plugins:
+                            try:
+                                cfg = load_config()
+                                result = plugins[cmd](text, cfg)
+                                if result:
+                                    send_message(result)
+                            except Exception as e:
+                                send_message(f"Plugin error: {e}")
                         else:
+                            plugin_cmds = "\n".join(
+                                f"{c}" for c in plugins) if plugins else ""
+                            extra = f"\n\n<b>Plugins:</b>\n{plugin_cmds}" if plugin_cmds else ""
                             send_message(
                                 "Unknown command. Try /status, /morning, "
-                                "/evening, or /weekly"
+                                "/evening, or /weekly" + extra
                             )
                         continue
 

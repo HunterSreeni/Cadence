@@ -50,6 +50,16 @@
     "custom_metrics": []
   },
 
+  "accounts": {},
+
+  "modules": {
+    "finance": { "enabled": false },
+    "habits":  { "enabled": false, "habits": ["exercise", "reading", "meditation"] },
+    "health":  { "enabled": false, "fields": ["weight", "food", "exercise_min"] }
+  },
+
+  "tracked_files": ["GOALS.md", "CURRENT_TASKS.md"],
+
   "tracking": {
     "categories": [
       { "keyword": "spent",   "pattern": "(?:spent\\s+)?(\\d+)\\s+(\\w[\\w\\s]*?)(?:,|$|\\n)", "emoji": "\ud83d\udcb8", "label": "Spending" },

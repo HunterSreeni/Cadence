@@ -315,13 +315,73 @@ Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE
 
 ---
 
+## Cloud Deployment
+
+Run cadence 24/7 — even when your laptop is off.
+
+- **[Oracle Cloud Free Tier](docs/CLOUD_DEPLOY.md)** — free forever, full Linux VM, systemd auto-restart
+- **[Docker](docs/DOCKER.md)** — run anywhere with `docker compose up -d`
+
+```bash
+# Oracle Cloud (recommended — free forever)
+bash schedulers/install_systemd.sh
+
+# Docker
+docker compose up -d
+```
+
+---
+
+## Plugins
+
+Add custom `/commands` by dropping `.py` files in `commands/`:
+
+```python
+# commands/weather.py
+def register():
+    return {"/weather": handle_weather}
+
+def handle_weather(text, config):
+    return "Weather plugin not configured."
+```
+
+The bot auto-discovers plugins at startup. See [commands/example.py](commands/example.py).
+
+---
+
+## Tracking Modules
+
+Enable optional tracking modules in `config.json`:
+
+```json
+"modules": {
+  "finance": { "enabled": true },
+  "habits":  { "enabled": true, "habits": ["exercise", "reading"] },
+  "health":  { "enabled": true, "fields": ["weight", "food"] }
+}
+```
+
+- **Finance** — bank-aware spending (`spent 500 from SAVINGS on rent`), auto-deduct from tracked accounts
+- **Habits** — streak tracking (`exercise` → "Exercise logged! Streak: 5")
+- **Health** — field logging (`weight 72.5` → logged with timestamp)
+
+See [docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md) for details.
+
+---
+
 ## Roadmap
 
+- [x] Plugin system for custom commands
+- [x] Tracking modules (finance, habits, health)
+- [x] Bank-aware spending with balance tracking
+- [x] Cloud deployment (Oracle Cloud Free Tier)
+- [x] Docker support
+- [x] systemd service installer
+- [x] Cross-platform PID check (Windows/macOS/Linux)
 - [ ] Quarterly and yearly review prompts
 - [ ] Multi-user support (team mode with shared goals)
 - [ ] Telegram inline keyboard for quick replies
 - [ ] Dashboard web UI (optional)
-- [ ] Plugin system for custom message builders
 - [ ] Notion/Obsidian sync
 - [ ] i18n (multi-language messages)
 

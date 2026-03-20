@@ -103,3 +103,129 @@ The generated markdown files (GOALS.md, CURRENT_TASKS.md, etc.) are yours to edi
 - `[ ]`, `[x]`, `[~]`, `[!]` status markers
 
 Everything else is freeform — add whatever sections you want.
+
+---
+
+## Bank-Aware Spending
+
+Track spending per account with auto-deducting balances.
+
+### 1. Configure accounts in `config.json`:
+
+```json
+"accounts": {
+  "SAVINGS": { "initial_balance": 50000 },
+  "CHECKING": { "initial_balance": 12000 }
+}
+```
+
+### 2. Send spending with account name:
+
+```
+spent 500 from SAVINGS on rent
+spent 200 groceries from CHECKING
+spent 300 from SAVINGS
+```
+
+The bot deducts from the account and reports the new balance. Balances are stored in `balances.json` (auto-created).
+
+### 3. Set balances explicitly:
+
+```
+savings 45000 checking 11000
+```
+
+### 4. View balances:
+
+Balances appear in morning briefings and `/status` automatically when accounts are configured.
+
+---
+
+## Tracking Modules
+
+Enable optional modules in `config.json` → `modules`:
+
+### Habits Module
+
+```json
+"modules": {
+  "habits": {
+    "enabled": true,
+    "habits": ["exercise", "reading", "meditation", "journaling"]
+  }
+}
+```
+
+**Usage:** Just type the habit name in Telegram:
+- `exercise` → "Exercise logged! Streak: 5"
+- `reading` → "Reading logged! Streak: 12 🔥 New best!"
+
+Streaks are tracked in `habits.json`. Morning briefings show today's habit status.
+
+### Health Module
+
+```json
+"modules": {
+  "health": {
+    "enabled": true,
+    "fields": ["weight", "food", "exercise_min", "water_l"]
+  }
+}
+```
+
+**Usage:** Type the field name followed by a number:
+- `weight 72.5` → "weight: 72.5"
+- `exercise_min 45` → "exercise_min: 45"
+
+---
+
+## Multi-Line Messages
+
+cadence splits multi-line Telegram messages and processes each line independently. This prevents cross-contamination:
+
+```
+spent 200 from SAVINGS on food
+submitted PR for review
+blocker: CI is broken
+```
+
+Each line gets its own response — spending doesn't trigger a work match.
+
+Multiple spending in one line also works:
+
+```
+spent 200 from SAVINGS on food and spent 50 from CHECKING on coffee
+```
+
+---
+
+## Plugin System
+
+Add custom `/commands` without modifying cadence.py.
+
+### 1. Create a file in `commands/`:
+
+```python
+# commands/mycommand.py
+def register():
+    return {"/mycommand": handle}
+
+def handle(text, config):
+    return "Hello from my custom command!"
+```
+
+### 2. Restart the listener
+
+The bot auto-discovers plugins at startup and adds them to the command list.
+
+### Handler signature:
+
+```python
+def handle(text: str, config: dict) -> str
+```
+
+- `text` — the full message text (e.g., "/mycommand arg1 arg2")
+- `config` — the loaded config.json dict
+- Return a string to send as a Telegram message
+
+See `commands/example.py` for a working reference.

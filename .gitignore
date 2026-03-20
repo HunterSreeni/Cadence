@@ -13,6 +13,12 @@ logs/
 /CURRENT_TASKS.md
 /WEEKLY_SCHEDULE.md
 /CLAUDE.md
+/FINANCES.md
+/HABITS.md
+
+# Runtime state (auto-generated, personal data)
+balances.json
+habits.json
 
 # Generated MCP config
 .mcp.json
