@@ -150,7 +150,7 @@ def step_telegram() -> dict:
     if use_telegram:
         bot_token = ask("Telegram Bot Token (from @BotFather)", "")
         chat_id = ask("Your Telegram Chat ID", "")
-        return {"telegram_bot_token": bot_token, "telegram_chat_id": chat_id}
+        return {"bot_token": bot_token, "chat_id": chat_id}
     return {}
 
 
@@ -161,12 +161,25 @@ def step_schedule(mode: str, replacements: dict) -> dict:
         print(f"  Review day: {review_day}")
         morning = ask("Morning check-in time (HH:MM, 24h)", "09:00")
         evening = ask("Evening check-in time (HH:MM, 24h)", "21:45")
-        return {"morning_time": morning, "evening_time": evening}
+        weekly_time = ask("Weekly review time (HH:MM, 24h)", "19:00")
+        return {
+            "morning_time": morning,
+            "evening_time": evening,
+            "weekly_review_day": review_day.lower(),
+            "weekly_review_time": weekly_time,
+        }
     else:
         standup = replacements.get("STANDUP_TIME", "9:30 AM")
         print(f"  Standup: {standup}")
         eod = ask("End-of-day log time (HH:MM, 24h)", "17:30")
-        return {"morning_time": standup, "evening_time": eod}
+        review_day = ask("Weekly review day", "Friday")
+        weekly_time = ask("Weekly review time (HH:MM, 24h)", "17:00")
+        return {
+            "morning_time": standup,
+            "evening_time": eod,
+            "weekly_review_day": review_day.lower(),
+            "weekly_review_time": weekly_time,
+        }
 
 
 def step_goals(mode: str, replacements: dict):
@@ -222,7 +235,7 @@ def generate_files(
         "year": replacements["YEAR"],
         "primary_goal": replacements["PRIMARY_GOAL"],
         "schedule": schedule_config,
-        "telegram": telegram_config,
+        "telegram": {"chat_id": telegram_config.get("chat_id")},
         "claude_enabled": enable_claude,
         "created": datetime.now().isoformat(),
     }
@@ -249,8 +262,8 @@ def generate_files(
         f"# Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
     ]
-    if telegram_config.get("telegram_bot_token"):
-        env_lines.append(f"BOT_TOKEN={telegram_config['telegram_bot_token']}")
+    if telegram_config.get("bot_token"):
+        env_lines.append(f"BOT_TOKEN={telegram_config['bot_token']}")
     else:
         env_lines.append("# BOT_TOKEN=your_bot_token_here")
 
@@ -333,7 +346,7 @@ def install_scheduler():
         # Check for systemd
         has_systemd = shutil.which("systemctl") is not None
         if has_systemd:
-            installer = schedulers_dir / "install-systemd.sh"
+            installer = schedulers_dir / "install_systemd.sh"
             if installer.exists():
                 print("  Using systemd scheduler...")
                 subprocess.run(["bash", str(installer)], check=True)
@@ -342,7 +355,7 @@ def install_scheduler():
                 print("  You can set up cron jobs manually. See docs/.")
         else:
             # Fallback to cron
-            installer = schedulers_dir / "install-cron.sh"
+            installer = schedulers_dir / "install_cron.sh"
             if installer.exists():
                 print("  Using cron scheduler...")
                 subprocess.run(["bash", str(installer)], check=True)
@@ -353,7 +366,7 @@ def install_scheduler():
                 print("    # Add your cadence check-in times")
 
     elif system == "darwin":
-        installer = schedulers_dir / "install-launchd.sh"
+        installer = schedulers_dir / "install_launchd.sh"
         if installer.exists():
             print("  Using launchd scheduler...")
             subprocess.run(["bash", str(installer)], check=True)
@@ -457,7 +470,7 @@ def main():
         print("    4. CLAUDE.md is ready — Claude Code will pick it up automatically")
         print("       when you open this folder as a project.\n")
 
-    if not telegram_config.get("telegram_bot_token"):
+    if not telegram_config.get("bot_token"):
         print("    Telegram not configured. To add later:")
         print("      - Edit .env with your bot token and chat ID")
         print("      - Run: python setup.py install-scheduler\n")

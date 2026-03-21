@@ -319,11 +319,14 @@ Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE
 
 Run cadence 24/7 — even when your laptop is off.
 
-- **[Oracle Cloud Free Tier](docs/CLOUD_DEPLOY.md)** — free forever, full Linux VM, systemd auto-restart
+- **[Google Cloud Free Tier](docs/CLOUD_DEPLOY.md#google-cloud-free-tier)** — free forever `e2-micro` VM, easy signup (recommended)
+- **[Oracle Cloud Free Tier](docs/CLOUD_DEPLOY.md#oracle-cloud-free-tier)** — free forever ARM VM (4 CPU, 24 GB RAM) — but signup can be difficult
 - **[Docker](docs/DOCKER.md)** — run anywhere with `docker compose up -d`
 
+> **Note:** Oracle Cloud often rejects signups due to card type, address mismatch, or region demand. If you can't create an Oracle account, **Google Cloud's Always Free `e2-micro` instance is a reliable alternative** with a smoother signup process.
+
 ```bash
-# Oracle Cloud (recommended — free forever)
+# Cloud VM (Google Cloud or Oracle Cloud)
 bash schedulers/install_systemd.sh
 
 # Docker
